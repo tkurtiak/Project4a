@@ -34,11 +34,16 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 	d = np.zeros(points.shape[0])
 	i = 0
 	for point in points:
-		print("point ",i)
+		#print("point ",i)
 		# Assemble a range of X and Y points for a window
-		rangeX = range(point[0]-window,point[0]+window)
-		rangeY = range(point[1]-window,point[1]+window)
-		windowpoints = np.array([rangeX,rangeY])
+		#print point
+		rangeX = range(point[1]-window,point[1]+window) #rows
+		rangeY = range(point[0]-window,point[0]+window) #columns
+		#print np.shape(rangeX)
+		# windowpoints = np.array([rangeX,rangeY]) #rows,columns
+		xx,yy = np.meshgrid(rangeX,rangeY)
+		windowpoints = np.array([xx.flatten(),yy.flatten()]) #rows,columns
+		# print windowpoints
 		#error = np.power(Leftwindowedimg[point[0],point[1]]-Rightwindowedimg[:,point[0]],2)
 		
 		# start window iteration at 0
@@ -47,31 +52,37 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 
 		# set range of disparity values to those which lie within the image
 		# Limit disparity range to -40 to + 40 to reduce iterations
-		lower = -point[1]+window
-		upper = Rightwindowedimg.shape[1]-point[1]-window
-		if lower < -40:
-			lower = -40
-		if upper > 40:
-			upper = 40
-		d_range = range(lower,upper,skipPixel)
+		#lower = -point[1]+window
+		#upper = Rightwindowedimg.shape[1]-point[1]-window
+		lower = point[0]-100
+		upper = point[0]+20
+		if upper > rightimg.shape[1]+window-1:
+			upper = rightimg.shape[1]+window-1
+		if lower < window-1:
+			lower = window-1
+		d_range = range(lower-point[0],upper-point[0],skipPixel)
 		# initialize error matrix
 		error = np.zeros(len(d_range))
-
+		#print lower
+		#print upper
 		#print len(d_range)
 		# iterate through the diaparity values
 		for d_temp in d_range:
 			# Calculate sumsquared error between the feature point window and the particular disparity window
-			error[j] = np.sum(np.power(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]]-Rightwindowedimg[windowpoints[0,:],windowpoints[1,:]+d_temp],2))
+			error[j] = np.sum(np.power(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]]-Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)],2))
 			j = j+1
 		# the minimum error represents the disparity index which is a maximum
 		#match = np.argmin(error)
 		#print np.argmin(error)
-		#print error
+		# print error
 		
 		
-		d[i] = d_range[np.argmin(error)]
+		d[i] = -d_range[np.argmin(error)]
 		# incriment point counter
+		#print d[i]
 		i = i+1
+		
 
-	Z = f*B/d
+	Z = np.divide(f*B,d)
+	# print Z
 	return Z, d
