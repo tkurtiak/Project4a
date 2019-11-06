@@ -17,6 +17,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import rospy
 import copy
 import stereoDepth as SD
+from sklearn import linear_model, datasets
 #import KLT
 # For testing
 #img = cv2.imread("frame0049.jpg")
@@ -47,7 +48,7 @@ def featuredetector(img):
     #kp = fast.detect(img,None)
     
     # SIFT Method
-    sift = cv2.xfeatures2d.SIFT_create()
+    sift = cv2.xfeatures2d.SIFT_create(500)
     kp, des = sift.detectAndCompute(img,None)
     # find and draw the keypoints
    
@@ -99,7 +100,8 @@ def OpticalFlow(data):
     # If not enough features are remaining in the image, generate new features
     if (frame == 0): #or (featurecount/lastfeaturecount < .8) or (featurecount<1000):
         features, des = featuredetector(thisimg)
-        #print "SIFT: ",len(features)
+        print "SIFT: ",len(features)
+        points = 0
     # Otherwise use feature tracking
     else:
         lastfeatures = copy.copy(features)
@@ -114,7 +116,7 @@ def OpticalFlow(data):
         #lastpoints = cv2.KeyPoint_convert(lastfeatures).astype(int)
         #features = KLT.calc_klt(lastimg, thisimg, lastpoints, win_size=(21, 21), max_iter=10, min_disp=0.01)
         
-        #print "SIFT compare: ",len(features)
+        print "SIFT compare: ",len(features)
     
         # Need to draw only good matches, so create a mask
         #matchesMask = [[0,0] for i in range(len(matches))]
@@ -138,16 +140,25 @@ def OpticalFlow(data):
         #plt.imshow(img3,),plt.show()
         img_pub1.publish(bridge.cv2_to_imgmsg(img3,"bgr8"))
 
-        Z,d = SD.sterioDepth(points[range(0,points.shape[0],5)].astype(int),leftImg,rightImg,f,B,window,skipPixel)
-        print np.median(Z)
+        Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel)
+        
+        # Filter points to only include those on Z plane
+        ransac = linear_model.RANSACRegressor()
+        ransac.fit(points, Z)
+        inlier_mask = ransac.inlier_mask_
+        outlier_mask = np.logical_not(inlier_mask)
+        Z_filter =  Z[inlier_mask]
+        Points_filter = points[inlier_mask]
+        print("Mean", np.mean(Z_filter))
+        print("Median", np.median(Z_filter))
         # delta = F(points,Z)*States
         # find states.
         # Construct matrix of F by augmenting rows for each point 
         # then take SVD to solve
 
         # Impliment a RANSAC function to get rid of outliers
-
-        return points, delta
+        #frame = frame+1
+        
         
 
     # Visualize features
@@ -162,6 +173,7 @@ def OpticalFlow(data):
     lastfeatures = copy.copy(features)
     featurecount = len(features)
     lastfeaturecount = len(lastfeatures)
+    return points, delta
 
 if __name__ == '__main__':
     try:

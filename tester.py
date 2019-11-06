@@ -1,6 +1,8 @@
 import cv2 
 import numpy as np
 import stereoDepth as SD
+from matplotlib import pyplot as plt
+from sklearn import linear_model, datasets
 
 left = cv2.imread("project_4_bags_and_cams/HelixLeft/frame0003.jpg")
 right = cv2.imread("project_4_bags_and_cams/HelixRight/frame0003.jpg")
@@ -30,12 +32,25 @@ Z,d = SD.sterioDepth(points,leftGray,rightGray,f,B,window,skipPixel)
 print Z
 print d
 
-dispimg = np.reshape(np.divide(d,np.max(d))*255,(leftGray.shape[0]//subsample,leftGray.shape[1]//subsample))
-depthimg = np.reshape(np.divide(Z,np.max(Z))*255,(leftGray.shape[0]//subsample,leftGray.shape[1]//subsample))
+#https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.RANSACRegressor.html#sklearn.linear_model.RANSACRegressor
+# Robustly fit linear model with RANSAC algorithm
+ransac = linear_model.RANSACRegressor()
+ransac.fit(points, Z)
+inlier_mask = ransac.inlier_mask_
+outlier_mask = np.logical_not(inlier_mask)
+Z_filter =  Z[inlier_mask]
 
 
-cv2.imshow('disparity',dispimg)
-cv2.imshow('depth',depthimg)
-cv2.imshow('Original',leftGray)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+dispimg = np.reshape(np.divide(d,np.max(d))*255,(leftGray.shape[0]//subsample,leftGray.shape[1]//subsample)).astype(int)
+depthimg = np.reshape(np.divide(Z,np.max(Z))*255,(leftGray.shape[0]//subsample,leftGray.shape[1]//subsample)).astype(int)
+mask = np.reshape(inlier_mask.astype('uint8'),(leftGray.shape[0]//subsample,leftGray.shape[1]//subsample))
+Zimg = cv2.bitwise_and(depthimg,depthimg,mask = mask) 
+
+# cv2.imshow('disparity',dispimg)
+# cv2.imshow('depth',depthimg)
+# cv2.imshow('Original',leftGray)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
+plt.imshow(dispimg,cmap='gray')
+plt.imshow(Zimg,cmap='gray')
+plt.show()

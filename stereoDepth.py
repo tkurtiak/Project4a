@@ -54,8 +54,8 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		# Limit disparity range to -40 to + 40 to reduce iterations
 		#lower = -point[1]+window
 		#upper = Rightwindowedimg.shape[1]-point[1]-window
-		lower = point[0]-100
-		upper = point[0]+20
+		lower = point[0]-50
+		upper = point[0]+0
 		if upper > rightimg.shape[1]+window-1:
 			upper = rightimg.shape[1]+window-1
 		if lower < window-1:
