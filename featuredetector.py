@@ -23,6 +23,7 @@ from nav_msgs.msg import Odometry # We need this message type to read position a
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point
 from std_msgs.msg import Empty
+import PlaneRANSAC as PR
 #import KLT
 # For testing
 #img = cv2.imread("frame0049.jpg")
@@ -44,7 +45,7 @@ time = np.zeros(5)
 
 f = 202
 B = 30
-window=2
+window=3
 skipPixel = 1
 
 
@@ -54,7 +55,7 @@ def featuredetector(img):
     #kp = fast.detect(img,None)
     
     # SIFT Method
-    sift = cv2.xfeatures2d.SIFT_create(100)
+    sift = cv2.xfeatures2d.SIFT_create(200)
     kp, des = sift.detectAndCompute(img,None)
     # find and draw the keypoints
    
@@ -164,12 +165,9 @@ def OpticalFlow(data):
         # ransac.fit(points, Z)
         # inlier_mask = ransac.inlier_mask_
         # outlier_mask = np.logical_not(inlier_mask)
-        Z_filter =  Z#[inlier_mask]
-        Points_filter = points#points[inlier_mask]
-        print("Mean - filter", np.mean(Z_filter))
-        print("Median - filter", np.median(Z_filter))
-        print("Median - raw", np.mean(Z))
-        print("Odom", global_pos.position.z)
+        #Z_filter =  Z#[inlier_mask]
+        #Points_filter = points#points[inlier_mask]
+
         
         # Points for RANSAC
         # Filter this for NaN's
@@ -181,21 +179,45 @@ def OpticalFlow(data):
         #print nanMask.shape
 
         # These points and deltas don't have any NaNs in them :)
-        ranPoints = [xpts[nanMask],ypts[nanMask],Z[nanMask]]
+        ranPoints = np.array([xpts[nanMask],ypts[nanMask],Z[nanMask]]).T
         ranDelta = delta[nanMask]
+        print ranPoints.shape
 
+        # print("Mean - filter", np.mean(Z_filter))
+        # print("Median - raw", np.mean(Z))
+        print("Odom", global_pos.position.z)
+        
         # RUN RANSAC HERE
+        FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
+        print("Median Z", np.median(FinalPoints[:,2]))
+        FinalDelta = ranDelta[ransMask]
+        print FinalPoints.shape
+        print FinalDelta.shape
        # FilterPoints = IlyasRanSack
 
         # Telemetry rate
         rate = (time[4]-time[0])/5
         print rate
 
-        # for i in range(0,finalPoints.shape[0]): 
-        #     A[i] = np.array([[-1/Z[i],0,x[i]/Z[i],x[i]*y[i],-(1+x[i]*x[i]),y[i]],[0,-1/Z[i],y[i]/Z[i],(1+y[i]*y[i]), -x[i]*y[i], -x[i]]])
-        #     b[i] = ranDelta*rate
-        #     res[i] = np.linalg.solve(A[i],b[i])
-        # Now average all results...
+        ## Calculate Optical Flow 
+        #res = np.zeros((FinalPoints.shape[0],6))
+        A = np.zeros((2*FinalPoints.shape[0],6))
+        b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
+        for i in range(0,FinalPoints.shape[0]): 
+            x = FinalPoints[i,0]
+            y = FinalPoints[i,1]
+            Z = FinalPoints[i,2]
+            # Populate Optical Flow Matrix for all points
+            A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
+            b[2*i:2*i+2] = FinalDelta[i]#*rate
+            #print A
+            #print b
+        #print A.shape
+        #print b.shape
+        # Linear least squares solver on optical flow equation
+        Results, res,rank,s = np.linalg.lstsq(A,b)
+        print Results
+        print Results.shape
 
         # Then Integrate to get odometry
       

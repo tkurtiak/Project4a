@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 import numpy as np
 
@@ -48,29 +47,28 @@ def PlaneRANSAC(points):
 	return points[indicies,:], indicies, bestnormal, bestD
 
 #TEST SHIT HERE IF YOU WANT BRO
-from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import axes3d, Axes3D
+# from matplotlib import pyplot as plt
+# from mpl_toolkits.mplot3d import axes3d, Axes3D
 
-points= np.random.randint(50, size=(100,3))
+# points= np.random.randint(50, size=(100,3))
 
-points[np.random.randint(points.shape[0], size=40),2]=25
+# points[np.random.randint(points.shape[0], size=40),2]=25
 
-points_close, indxs, normal, D = PlaneRANSAC(points)
-print points_close.shape
-print indxs
+# points_close, indxs, normal, D = PlaneRANSAC(points)
+# print points_close.shape
+# print indxs
 
-# plot the surface
-plt3d = plt.figure().gca(projection='3d')
+# # plot the surface
+# plt3d = plt.figure().gca(projection='3d')
 
-xx, yy = np.meshgrid(range(50), range(50))
-zz = (-normal[0] * xx - normal[1] * yy - D) * 1. /normal[2]
+# xx, yy = np.meshgrid(range(50), range(50))
+# zz = (-normal[0] * xx - normal[1] * yy - D) * 1. /normal[2]
 
-plt3d.plot_surface(xx, yy, zz, alpha=0.2)
+# plt3d.plot_surface(xx, yy, zz, alpha=0.2)
 
-# Ensure that the next plot doesn't overwrite the first plot
-ax = plt.gca()
-ax.hold(True)
-ax.scatter(points[:,0], points[:,1], points[:,2], color='red')
-ax.scatter(points_close[:,0], points_close[:,1], points_close[:,2], color='green')
-plt.show()
-
+# # Ensure that the next plot doesn't overwrite the first plot
+# ax = plt.gca()
+# ax.hold(True)
+# ax.scatter(points[:,0], points[:,1], points[:,2], color='red')
+# ax.scatter(points_close[:,0], points_close[:,1], points_close[:,2], color='green')
+# plt.show()
