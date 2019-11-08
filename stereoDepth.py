@@ -33,6 +33,11 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 	# initialize disparity array
 	d = np.zeros(points.shape[0])
 	i = 0
+
+	# hack to allow single point to work
+	if points.shape[1] == 1:
+		points[:,1] = [0,0]
+
 	for point in points:
 		#print("point ",i)
 		# Assemble a range of X and Y points for a window
@@ -43,7 +48,8 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		# windowpoints = np.array([rangeX,rangeY]) #rows,columns
 		xx,yy = np.meshgrid(rangeX,rangeY)
 		windowpoints = np.array([xx.flatten(),yy.flatten()]) #rows,columns
-		# print windowpoints
+		#print point
+		#print windowpoints
 		#error = np.power(Leftwindowedimg[point[0],point[1]]-Rightwindowedimg[:,point[0]],2)
 		
 		# start window iteration at 0
@@ -54,13 +60,14 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		# Limit disparity range to -40 to + 40 to reduce iterations
 		#lower = -point[1]+window
 		#upper = Rightwindowedimg.shape[1]-point[1]-window
-		lower = point[0]-50
-		upper = point[0]+0
+		lower = point[0]-20
+		upper = point[0]+2
 		if upper > rightimg.shape[1]+window-1:
 			upper = rightimg.shape[1]+window-1
 		if lower < window-1:
 			lower = window-1
 		d_range = range(lower-point[0],upper-point[0],skipPixel)
+		#print d_range
 		# initialize error matrix
 		error = np.zeros(len(d_range))
 		#print lower
@@ -69,7 +76,9 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		# iterate through the diaparity values
 		for d_temp in d_range:
 			# Calculate sumsquared error between the feature point window and the particular disparity window
-			error[j] = np.sum(np.power(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]]-Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)],2))
+			error[j] = np.sum(np.power(np.subtract(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]],Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)]),2))
+			#error = Leftwindowedimg[]-Rightwindowedimg[]
+			
 			j = j+1
 		# the minimum error represents the disparity index which is a maximum
 		#match = np.argmin(error)
@@ -78,6 +87,11 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		
 		
 		d[i] = -d_range[np.argmin(error)]
+		# Reject edge disparitys as NaN
+		if d[i] <= 0:
+			d[i] = 'NaN'
+		if d[i] == d_range[0]:
+			d[i] = 'NaN'
 		# incriment point counter
 		#print d[i]
 		i = i+1

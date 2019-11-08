@@ -4,48 +4,64 @@ import cv2
 import numpy as np
 import stereoDepth as SD
 from matplotlib import pyplot as plt
-from sklearn import linear_model, datasets
+#from sklearn import linear_model, datasets
 
-left = cv2.imread("images/aloeL.jpg")
-right = cv2.imread("images/aloeR.jpg")
+#left = cv2.imread("images/aloeL.jpg")
+#right = cv2.imread("images/aloeR.jpg")
 #left = cv2.imread("project_4_bags_and_cams/left_test.jpg")
 #right = cv2.imread("project_4_bags_and_cams/right_test.jpg")
-
+#left = cv2.imread("project_4_bags_and_cams/aloeL.jpg")
+#right = cv2.imread("project_4_bags_and_cams/aloeR.jpg")
+left = cv2.imread("project_4_bags_and_cams/HelixLeft/frame0003.jpg")
+right = cv2.imread("project_4_bags_and_cams/HelixRight/frame0003.jpg")
 
 leftGray = cv2.cvtColor(left,cv2.COLOR_BGR2GRAY)
 rightGray = cv2.cvtColor(right,cv2.COLOR_BGR2GRAY)
 
+method = 1
+if method == 1:
+	sift = cv2.xfeatures2d.SIFT_create(200)
+	kp, des = sift.detectAndCompute(leftGray,None)
+	points = np.zeros((len(kp),2))
+	ptnum = 0
+	for p in kp:
+		points[ptnum] = np.array(kp[ptnum].pt)
+		ptnum= ptnum+1
+	points = points.astype(int)
+else:
+	count = 0
+	subsample = 10
+	#points = np.array([[325,233]])#
+	points = np.zeros((np.floor(leftGray.shape[0]/subsample)*np.floor(leftGray.shape[1]/subsample),2))
 
-count = 0
-subsample = 20 
-#points = np.array([[325,233]])#
-points = np.zeros((np.floor(leftGray.shape[0]/subsample)*np.floor(leftGray.shape[1]/subsample),2))
-
-print leftGray.shape
-print points.shape
-for i in range(0,left.shape[1]-subsample+1,subsample):
-	for j in range(0,left.shape[0]-subsample+1,subsample):
-		points[count] = [i,j]
-		count = count+1
-points = points.astype(int)
-print count
+	print leftGray.shape
+	print points.shape
+	for i in range(0,left.shape[1]-subsample+1,subsample):
+		for j in range(0,left.shape[0]-subsample+1,subsample):
+			points[count] = [i,j]
+			count = count+1
+	points = points.astype(int)
+	print count
 
 
 f = 202
 B = 30
-window = 4
+window = 2
 skipPixel = 1
 Z,d = SD.sterioDepth(points,leftGray,rightGray,f,B,window,skipPixel)
 
 depth_image=leftGray.copy()*0
 dnormalized= np.divide(d,np.max(d))*255
+#dnormalized = d
 dnormalized= dnormalized.astype(int)
 for i in range(points.shape[0]):
 	# depth_image[points[i,1],points[i,0]]=dnormalized[i]
 	cv2.circle(depth_image,(points[i,0],points[i,1]),5,dnormalized[i],-1)
 
 cv2.imshow('depths?',depth_image)
-cv2.imshow('OG',leftGray)
+#cv2.imshow('OG',leftGray)
+cv2.imshow('OriginalL',leftGray)
+cv2.imshow('OriginalR',rightGray)
 
 # print Z
 # print d
