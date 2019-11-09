@@ -32,7 +32,7 @@ bridge = CvBridge()
 # Initiate FAST object with default values
 fast = cv2.FastFeatureDetector()
 img_pub1 = rospy.Publisher("/feature_img1",Image)
-img_pub2 = rospy.Publisher("/feature_img2",Image)
+img_pub2 = rospy.Publisher("/debug",Image)
 
 # Define Global parameters
 frame = 0
@@ -75,7 +75,7 @@ def featurecompare(des1, des2):
     search_params = dict(checks=50)   # or pass empty dictionary
 
     flann = cv2.FlannBasedMatcher(index_params,search_params)
-    matches = flann.knnMatch(des1,des2,k=1)
+    matches = flann.knnMatch(des1,des2,k=2)
     return matches
 
 def rundetection():
@@ -107,9 +107,16 @@ def SaveImg(data,LorR):
         imgout = rightImg
     return imgout
 
+# From https://stackoverflow.com/questions/10274774/python-elegant-and-efficient-ways-to-mask-a-list
+from itertools import compress
+class MaskableList(list):
+    def __getitem__(self, index):
+        try: return super(MaskableList, self).__getitem__(index)
+        except TypeError: return MaskableList(compress(self, index))
+
 def OpticalFlow(data):
     global frame, matches, des, lastdes, features, lastfeatures, featurecount, lastfeaturecount, thisimg, lastimg
-    global f, B, window, SkipPixel, Z
+    global f, B, window, SkipPixel, Z, delta
     thisimg = SaveImg(data,"L")
     #thisimg = bridge.imgmsg_to_cv2(data,"passthrough")
 
@@ -125,33 +132,60 @@ def OpticalFlow(data):
         lastfeatures = copy.copy(features)
         lastdes = copy.copy(des)
         features, des = featuredetector(thisimg)
-        matches = featurecompare(lastdes, des)
-
+        matches = featurecompare(des, lastdes)
+        #print len(Twomatches)
         # Extract points from matches
         points = np.zeros((len(matches),2))
         delta = np.zeros((len(matches),2))
+        dist = np.zeros((len(matches)))
         #tracker = cv2.Tracker_KCF_create()
         #lastpoints = cv2.KeyPoint_convert(lastfeatures).astype(int)
         #features = KLT.calc_klt(lastimg, thisimg, lastpoints, win_size=(21, 21), max_iter=10, min_disp=0.01)
         
         print "SIFT compare: ",len(features)
-    
-        # Need to draw only good matches, so create a mask
-        #matchesMask = [[0,0] for i in range(len(matches))]
         
+        #global matchMask
+        # Need to draw only good matches, so create a mask
+        matchMask = np.zeros((len(matches),2))        
         # ratio test as per Lowe's paper
         # source: https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_matcher/py_matcher.html
         for i in range(0,len(matches)):
-        #    if m.distance < 0.7*n.distance:
-        #        matchesMask[i]=[1,0]
-            points[i] = lastfeatures[matches[i][0].queryIdx].pt#features[m.queryIdx]]
-            delta[i] = np.subtract(features[matches[i][0].imgIdx].pt,lastfeatures[matches[i][0].queryIdx].pt)   
+            points[i] = lastfeatures[matches[i][0].trainIdx].pt#features[m.queryIdx]]
+            delta[i] = np.subtract(features[matches[i][0].queryIdx].pt,lastfeatures[matches[i][0].trainIdx].pt)   
+            dist[i] = np.sqrt(delta[i,0]**2+delta[i,1]**2)#matches[i][0].distance
+            if matches[i][0].distance < 0.7*matches[i][1].distance:    
+                matchMask[i]=[1,0]  
+            #if dist[i]<20:    
+            #    matchMask[i]=[1,0]     
+        matchMaskbool = matchMask.astype('bool')
+        ## Filter out bad feature matches
+        #print dist
+        # If distance is too high between matches, get rid of the match
+        #matchMask = np.array(~(dist>20))
+        #print matchMask
+        #print matchMask.shape
+        #global points, points2, delta2, matchMask
+        # remove bad matches
+        points = points[matchMaskbool[:,0]]
+        delta = delta[matchMaskbool[:,0]]
+        dist = dist[matchMaskbool[:,0]]
+        mlist = MaskableList
+        plotmatches = mlist(matches)[matchMaskbool[:,0]]
+        plotfeatures = mlist(features)[matchMaskbool[:,0]]
+        #des = mlist(des)[matchMask]
+        plotlastfeatures = mlist(lastfeatures)[matchMaskbool[:,0]]
+        #lastdes = mlist(lastdes)[matchMask]
+        #print points
+        #print points.shape
+
+
         #print points#delta[0]
         draw_params = dict(matchColor = (0,255,0),
                            singlePointColor = (255,0,0),
-        #                   matchesMask = matchesMask,
+                           matchesMask = matchMask,
                            flags = cv2.DrawMatchesFlags_DEFAULT)
-        img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches[:100],None,**draw_params)
+        #img3 = cv2.drawMatchesKnn(thisimg,plotfeatures,lastimg,plotlastfeatures,matches,None,**draw_params)
+        img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches,None,**draw_params)
         #print matches[1]
         #print len(lastfeatures)
         #print len(features)
@@ -181,7 +215,7 @@ def OpticalFlow(data):
         # These points and deltas don't have any NaNs in them :)
         ranPoints = np.array([xpts[nanMask],ypts[nanMask],Z[nanMask]]).T
         ranDelta = delta[nanMask]
-        print ranPoints.shape
+        #print ranPoints.shape
 
         # print("Mean - filter", np.mean(Z_filter))
         # print("Median - raw", np.mean(Z))
@@ -190,14 +224,15 @@ def OpticalFlow(data):
         # RUN RANSAC HERE
         FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
         print("Median Z", np.median(FinalPoints[:,2]))
+        global FinalDelta
         FinalDelta = ranDelta[ransMask]
-        print FinalPoints.shape
-        print FinalDelta.shape
+        #print FinalPoints.shape
+        #print FinalDelta.shape
        # FilterPoints = IlyasRanSack
 
         # Telemetry rate
         rate = (time[4]-time[0])/5
-        print rate
+        print("Telemetry Rate, seconds per frame",rate)
 
         ## Calculate Optical Flow 
         #res = np.zeros((FinalPoints.shape[0],6))
@@ -217,7 +252,7 @@ def OpticalFlow(data):
         # Linear least squares solver on optical flow equation
         Results, res,rank,s = np.linalg.lstsq(A,b)
         print Results
-        print Results.shape
+        #print Results.shape
 
         # Then Integrate to get odometry
       
