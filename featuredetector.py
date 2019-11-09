@@ -153,10 +153,10 @@ def OpticalFlow(data):
             points[i] = lastfeatures[matches[i][0].trainIdx].pt#features[m.queryIdx]]
             delta[i] = np.subtract(features[matches[i][0].queryIdx].pt,lastfeatures[matches[i][0].trainIdx].pt)   
             dist[i] = np.sqrt(delta[i,0]**2+delta[i,1]**2)#matches[i][0].distance
-            if matches[i][0].distance < 0.7*matches[i][1].distance:    
-                matchMask[i]=[1,0]  
-            #if dist[i]<20:    
-            #    matchMask[i]=[1,0]     
+            #if matches[i][0].distance < 0.7*matches[i][1].distance:    
+            #    matchMask[i]=[1,0]  
+            if dist[i]<10:    
+                matchMask[i]=[1,0]     
         matchMaskbool = matchMask.astype('bool')
         ## Filter out bad feature matches
         #print dist
@@ -178,7 +178,11 @@ def OpticalFlow(data):
         #print points
         #print points.shape
 
+        # Plot optical Flow Vectors
+        plt.quiver(points[:,0],points[:,1],delta[:,0],delta[:,1])
+        #plt.show()
 
+        ## Show matches
         #print points#delta[0]
         draw_params = dict(matchColor = (0,255,0),
                            singlePointColor = (255,0,0),
@@ -192,6 +196,7 @@ def OpticalFlow(data):
         #plt.imshow(img3,),plt.show()
         img_pub1.publish(bridge.cv2_to_imgmsg(img3,"bgr8"))
 
+        ## Estimate Stereo depth
         Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel)
         
         # Filter points to only include those on Z plane
@@ -219,12 +224,13 @@ def OpticalFlow(data):
 
         # print("Mean - filter", np.mean(Z_filter))
         # print("Median - raw", np.mean(Z))
-        print("Odom", global_pos.position.z)
+        print("Odom Height, meters", global_pos.position.z)
+        
         
         # RUN RANSAC HERE
         FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
         print("Median Z", np.median(FinalPoints[:,2]))
-        global FinalDelta
+        #global FinalDelta
         FinalDelta = ranDelta[ransMask]
         #print FinalPoints.shape
         #print FinalDelta.shape
@@ -251,9 +257,10 @@ def OpticalFlow(data):
         #print b.shape
         # Linear least squares solver on optical flow equation
         Results, res,rank,s = np.linalg.lstsq(A,b)
-        print Results
+        #print Results
         #print Results.shape
-
+        print("Opt Flow Velocity m/s:", Results[0:3]/1000)
+        print("Odometry Velocity m/s:", global_vel.linear)
         # Then Integrate to get odometry
       
 
