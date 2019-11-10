@@ -24,9 +24,7 @@ from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point
 from std_msgs.msg import Empty
 import PlaneRANSAC as PR
-#import KLT
-# For testing
-#img = cv2.imread("frame0049.jpg")
+
 
 bridge = CvBridge()
 # Initiate FAST object with default values
@@ -34,7 +32,7 @@ fast = cv2.FastFeatureDetector()
 img_pub1 = rospy.Publisher("/feature_img1",Image)
 img_pub2 = rospy.Publisher("/debug",Image)
 
-# Define Global parameters
+# Define/Initialize Global parameters
 frame = 0
 featurecount = 0
 lastfeaturecount = 0
@@ -43,10 +41,16 @@ lastfeaturecount = 0
 matches = 0
 time = np.zeros(5)
 
+# Camera focal length [pixel]
 f = 202
+# Stereo base distance [mm]
 B = 30
-window=3
+# Stereo Depth window size for finsing matches 
+window=4
+# This should aways be set to 1
 skipPixel = 1
+# Set number of feastures to track.  Less is faster, but less robust
+numFeatures = 500
 
 
 def featuredetector(img):
@@ -55,7 +59,7 @@ def featuredetector(img):
     #kp = fast.detect(img,None)
     
     # SIFT Method
-    sift = cv2.xfeatures2d.SIFT_create(200)
+    sift = cv2.xfeatures2d.SIFT_create(numFeatures)
     kp, des = sift.detectAndCompute(img,None)
     # find and draw the keypoints
    
@@ -123,7 +127,7 @@ def OpticalFlow(data):
     print frame
 
     # If not enough features are remaining in the image, generate new features
-    if (frame == 0): #or (featurecount/lastfeaturecount < .8) or (featurecount<1000):
+    if (frame == 0) or (featurecount < numFeatures/3) or (lastfeaturecount <numFeatures/3):
         features, des = featuredetector(thisimg)
         print "SIFT: ",len(features)
         points = 0
@@ -153,10 +157,13 @@ def OpticalFlow(data):
             points[i] = lastfeatures[matches[i][0].trainIdx].pt#features[m.queryIdx]]
             delta[i] = np.subtract(features[matches[i][0].queryIdx].pt,lastfeatures[matches[i][0].trainIdx].pt)   
             dist[i] = np.sqrt(delta[i,0]**2+delta[i,1]**2)#matches[i][0].distance
-            #if matches[i][0].distance < 0.7*matches[i][1].distance:    
-            #    matchMask[i]=[1,0]  
-            if dist[i]<10:    
-                matchMask[i]=[1,0]     
+            if matches[i][0].distance < 0.7*matches[i][1].distance:    
+                #matchMask[i]=[1,0]  
+                # In addition to "Lowe's" method for bad feature match removel
+                # Only accept features matches which have a delta less than some threshold
+                if dist[i]<20:    
+                    matchMask[i]=[1,0]     
+        
         matchMaskbool = matchMask.astype('bool')
         ## Filter out bad feature matches
         #print dist
@@ -179,17 +186,22 @@ def OpticalFlow(data):
         #print points.shape
 
         # Plot optical Flow Vectors
-        plt.quiver(points[:,0],points[:,1],delta[:,0],delta[:,1])
+        # plt.cla()
+        # plt.imshow(thisimg)
+        # plt.quiver(points[:,0],points[:,1],delta[:,0],delta[:,1])
+        # plt.ylim((0,480))
+        # plt.xlim((0,640))
+        # plt.pause(0.05)
         #plt.show()
 
-        ## Show matches
+        ## Show matches -- SOMETHING IS NOT WORKING HERE, but its only a visualization...
         #print points#delta[0]
         draw_params = dict(matchColor = (0,255,0),
                            singlePointColor = (255,0,0),
-                           matchesMask = matchMask,
+        #                   matchesMask = matchMask,
                            flags = cv2.DrawMatchesFlags_DEFAULT)
-        #img3 = cv2.drawMatchesKnn(thisimg,plotfeatures,lastimg,plotlastfeatures,matches,None,**draw_params)
-        img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches,None,**draw_params)
+        img3 = cv2.drawMatchesKnn(thisimg,plotfeatures,lastimg,plotlastfeatures,plotmatches,None,**draw_params)
+        #img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches,None,**draw_params)
         #print matches[1]
         #print len(lastfeatures)
         #print len(features)
@@ -226,17 +238,31 @@ def OpticalFlow(data):
         # print("Median - raw", np.mean(Z))
         print("Odom Height, meters", global_pos.position.z)
         
+        ## Script breaks if there are too few points input into ransac.  
+        # throw an error if there are too few points
+        print ranPoints.shape 
+        if ranPoints.shape[0]<30:
+            raise NameError("Not enough Non NaN points for RANSAC")
         
-        # RUN RANSAC HERE
+        ## RUN RANSAC HERE
         FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
         print("Median Z", np.median(FinalPoints[:,2]))
+        print("Mean Z", np.mean(FinalPoints[:,2]))
         #global FinalDelta
         FinalDelta = ranDelta[ransMask]
         #print FinalPoints.shape
         #print FinalDelta.shape
-       # FilterPoints = IlyasRanSack
+        
+                # Plot optical Flow Vectors
+        plt.cla()
+        plt.imshow(thisimg)
+        plt.quiver(FinalPoints[:,0],FinalPoints[:,1],FinalDelta[:,0],FinalDelta[:,1])
+        plt.ylim((0,480))
+        plt.xlim((0,640))
+        plt.pause(0.05)
+        #plt.show()
 
-        # Telemetry rate
+        # Calculate 5 frame rolling avg Telemetry rate
         rate = (time[4]-time[0])/5
         print("Telemetry Rate, seconds per frame",rate)
 
@@ -245,21 +271,24 @@ def OpticalFlow(data):
         A = np.zeros((2*FinalPoints.shape[0],6))
         b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
         for i in range(0,FinalPoints.shape[0]): 
-            x = FinalPoints[i,0]
-            y = FinalPoints[i,1]
-            Z = FinalPoints[i,2]
+            # Transfer points to image frame with 0,0 at center of the image
+            x = FinalPoints[i,0]-thisimg.shape[0]
+            y = FinalPoints[i,1]-thisimg.shape[1]
+            # Try replacing Z with odom altitude, for fun...
+            #Z = -global_pos.position.z
+            Z = -FinalPoints[i,2]/1000
             # Populate Optical Flow Matrix for all points
             A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
-            b[2*i:2*i+2] = FinalDelta[i]#*rate
+            b[2*i:2*i+2] = FinalDelta[i]/rate
             #print A
             #print b
         #print A.shape
         #print b.shape
         # Linear least squares solver on optical flow equation
-        Results, res,rank,s = np.linalg.lstsq(A,b)
+        Results, res, rank, s = np.linalg.lstsq(A,b)
         #print Results
         #print Results.shape
-        print("Opt Flow Velocity m/s:", Results[0:3]/1000)
+        print("Opt Flow Velocity m/s:", Results[0:3])
         print("Odometry Velocity m/s:", global_vel.linear)
         # Then Integrate to get odometry
       
@@ -272,7 +301,7 @@ def OpticalFlow(data):
     
     # Run Optical Flow Calaculation here
 
-
+    #plt.show()
     #set parameters for next run
     frame = frame + 1
     lastimg = copy.copy(thisimg)
