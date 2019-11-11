@@ -105,13 +105,19 @@ def featurecompare(des1, des2):
 #     print "                                    got sumthing 3"
 #     #header = data.header.stamp
 #     print(["                                " , str(data.header.stamp)])
-
+def writeOdom(data):
+    global global_pos
+    global global_vel
+    #rospy.loginfo(data.pose.pose)
+    #rospy.loginfo(data.twist.twist)
+    global_pos=data.pose.pose
+    global_vel=data.twist.twist
 
 def rundetection():
     rospy.init_node('feature_detection', anonymous=True)
     right_sub=message_filters.Subscriber("/duo3d/right/image_rect", Image)#,heyo1)#,queue_size=4)
     left_sub=message_filters.Subscriber("/duo3d/left/image_rect", Image)#,heyo2)#,queue_size=4)
-    odom_sub=message_filters.Subscriber('/bebop/odom', Odometry)#,heyo3)#,queue_size=20)
+    rospy.Subscriber('/bebop/odom', Odometry, writeOdom)
     
     # cache1 = message_filters.Cache(left_sub,1)
     # cache1.registerCallback(heyo1)
@@ -120,9 +126,10 @@ def rundetection():
     # cache3 = message_filters.Cache(odom_sub,1)
     # cache3.registerCallback(heyo3)
     #[topics to synch],q size, max delta t between msgs
-    ts = message_filters.ApproximateTimeSynchronizer([left_sub,right_sub,odom_sub],10,.2e9)
+    ts = message_filters.ApproximateTimeSynchronizer([left_sub,right_sub],10,.05e9)
     ts.registerCallback(OpticalFlow)
     rospy.spin()
+
 
 
 # def SaveImg(data,LorR):
@@ -146,15 +153,15 @@ class MaskableList(list):
         try: return super(MaskableList, self).__getitem__(index)
         except TypeError: return MaskableList(compress(self, index))
 
-def OpticalFlow(leftImg,rightImg,odom_data):
+def OpticalFlow(leftImg,rightImg):
     #when we get into this function left,right and odom should all be synched
     global f, B, window, SkipPixel, Z, delta, slide_dist
     global time
     time[0:4] = time[1:5]
-    time[4] = float(str(odom_data.header.stamp))/1e9
+    time[4] = float(str(leftImg.header.stamp))/1e9
 
-    pos=odom_data.pose.pose
-    vel=odom_data.twist.twist
+    global global_pos
+    global global_vel
 
     global frame, matches, des, lastdes, features, lastfeatures, featurecount, lastfeaturecount, thisimg #, lastimg
     
@@ -278,7 +285,7 @@ def OpticalFlow(leftImg,rightImg,odom_data):
 
         # print("Mean - filter", np.mean(Z_filter))
         # print("Median - raw", np.mean(Z))
-        print("Odom Height, meters", pos.position.z)
+        print("Odom Height, meters", global_pos.position.z)
         
         ## Script breaks if there are too few points input into ransac.  
         # throw an error if there are too few points
@@ -327,7 +334,7 @@ def OpticalFlow(leftImg,rightImg,odom_data):
                 x = FinalPoints[i,0]-thisimg.shape[1]/2
                 y = thisimg.shape[0]/2 - FinalPoints[i,1]
                 # Try replacing Z with odom altitude, for fun...
-                Z = -pos.position.z
+                Z = -global_pos.position.z
                 #Z = -FinalPoints[i,2]/1000
                 # Populate Optical Flow Matrix for all points
                 A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
@@ -342,7 +349,7 @@ def OpticalFlow(leftImg,rightImg,odom_data):
             #print Results.shape
             print("Opt Flow Velocity m/s:", Results[0:3])
             print("Opt Flow Rotations:", Results[3:])
-            print("Odometry Velocity m/s:", vel.linear)
+            print("Odometry Velocity m/s:", global_vel.linear)
             # Then Integrate to get odometry
       
 
