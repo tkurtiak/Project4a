@@ -6,21 +6,23 @@ import stereoDepth as SD
 from matplotlib import pyplot as plt
 #from sklearn import linear_model, datasets
 
-#left = cv2.imread("images/aloeL.jpg")
-#right = cv2.imread("images/aloeR.jpg")
-#left = cv2.imread("project_4_bags_and_cams/left_test.jpg")
-#right = cv2.imread("project_4_bags_and_cams/right_test.jpg")
+left = cv2.imread("images/aloeL.jpg")
+right = cv2.imread("images/aloeR.jpg")
+# left = cv2.imread("left_test.jpg")
+# right = cv2.imread("right_test.jpg")
 #left = cv2.imread("project_4_bags_and_cams/aloeL.jpg")
 #right = cv2.imread("project_4_bags_and_cams/aloeR.jpg")
-left = cv2.imread("project_4_bags_and_cams/HelixLeft/frame0003.jpg")
-right = cv2.imread("project_4_bags_and_cams/HelixRight/frame0003.jpg")
+# left = cv2.imread("images/HelixLeft/frame0003.jpg")
+# right = cv2.imread("images/HelixRight/frame0003.jpg")
 
 leftGray = cv2.cvtColor(left,cv2.COLOR_BGR2GRAY)
 rightGray = cv2.cvtColor(right,cv2.COLOR_BGR2GRAY)
 
-method = 1
+# leftGray[430:450,530:560]=255
+
+method = 2
 if method == 1:
-	sift = cv2.xfeatures2d.SIFT_create(200)
+	sift = cv2.xfeatures2d.SIFT_create(700)
 	kp, des = sift.detectAndCompute(leftGray,None)
 	points = np.zeros((len(kp),2))
 	ptnum = 0
@@ -28,9 +30,10 @@ if method == 1:
 		points[ptnum] = np.array(kp[ptnum].pt)
 		ptnum= ptnum+1
 	points = points.astype(int)
+	#print points
 else:
 	count = 0
-	subsample = 10
+	subsample = 20
 	#points = np.array([[325,233]])#
 	points = np.zeros((np.floor(leftGray.shape[0]/subsample)*np.floor(leftGray.shape[1]/subsample),2))
 
@@ -45,10 +48,20 @@ else:
 
 
 f = 202
-B = 30
-window = 2
-skipPixel = 1
-Z,d = SD.sterioDepth(points,leftGray,rightGray,f,B,window,skipPixel)
+B = 5
+window = 4
+skipPixel = 2
+slide_dist = 150 #how far to the left do we look for the same shit
+Z,d = SD.sterioDepth(points,leftGray,rightGray,f,B,window,skipPixel, slide_dist)
+
+
+print d
+nanMask = np.array(~np.isnan(d))
+points = points[nanMask,:]
+d = d[nanMask]
+Z = Z[nanMask]
+print np.median(d)
+print np.mean(d)
 
 depth_image=leftGray.copy()*0
 dnormalized= np.divide(d,np.max(d))*255

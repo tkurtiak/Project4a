@@ -52,6 +52,7 @@ B = 30
 window=4
 # This should aways be set to 1
 skipPixel = 1
+slide_dist = 50 #how far left do we look for the same stuff in stereo calcs
 # Set number of feastures to track.  Less is faster, but less robust
 numFeatures = 500
 
@@ -123,7 +124,7 @@ class MaskableList(list):
 
 def OpticalFlow(data):
     global frame, matches, des, lastdes, features, lastfeatures, featurecount, lastfeaturecount, thisimg, lastimg
-    global f, B, window, SkipPixel, Z, delta
+    global f, B, window, SkipPixel, Z, delta, slide_dist
     thisimg = SaveImg(data,"L")
 
     global global_pos
@@ -218,7 +219,7 @@ def OpticalFlow(data):
         # img_pub1.publish(bridge.cv2_to_imgmsg(img3,"bgr8"))
 
         ## Estimate Stereo depth
-        Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel)
+        Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel,slide_dist)
         
         # Filter points to only include those on Z plane
         # ransac = linear_model.RANSACRegressor()
@@ -254,61 +255,63 @@ def OpticalFlow(data):
             raise NameError("Not enough Non NaN points for RANSAC")
         
         ## RUN RANSAC HERE
-        FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
-        print("Median Z", np.median(FinalPoints[:,2]))
-        print("Mean Z", np.mean(FinalPoints[:,2]))
-        #global FinalDelta
-        FinalDelta = ranDelta[ransMask]
-        #print FinalPoints.shape
-        #print FinalDelta.shape
-        
-        # Plot optical Flow Vectors
-        #FinalDelta[:,:]=15
+        else:
+
+            FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(ranPoints)
+            print("Median Z", np.median(FinalPoints[:,2]))
+            print("Mean Z", np.mean(FinalPoints[:,2]))
+            #global FinalDelta
+            FinalDelta = ranDelta[ransMask]
+            #print FinalPoints.shape
+            #print FinalDelta.shape
+            
+            # Plot optical Flow Vectors
+            #FinalDelta[:,:]=15
 
 
-        plt.cla()
-        plt.imshow(thisimg)
-        plt.quiver(FinalPoints[:,0],FinalPoints[:,1],FinalDelta[:,0],FinalDelta[:,1])
-        plt.ylim((0,480))
-        plt.xlim((0,640))
-        plt.pause(0.05)
-        #plt.show()
+            plt.cla()
+            plt.imshow(thisimg)
+            plt.quiver(FinalPoints[:,0],FinalPoints[:,1],FinalDelta[:,0],FinalDelta[:,1])
+            plt.ylim((0,480))
+            plt.xlim((0,640))
+            plt.pause(0.05)
+            #plt.show()
 
-        # Calculate 5 frame rolling avg Telemetry rate
-        #rate = (time[4]-time[0])/5
-        rate = (time[4]-time[0])/4 #if have 5 times, then have 4 deltaTs
-        print("Telemetry Rate, seconds per frame",rate)
+            # Calculate 5 frame rolling avg Telemetry rate
+            #rate = (time[4]-time[0])/5
+            rate = (time[4]-time[0])/4 #if have 5 times, then have 4 deltaTs
+            print("Telemetry Rate, seconds per frame",rate)
 
-        ## Calculate Optical Flow 
-        #res = np.zeros((FinalPoints.shape[0],6))
-        A = np.zeros((2*FinalPoints.shape[0],6))
-        b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
-        #print thisimg.shape
-        for i in range(0,FinalPoints.shape[0]): 
-            # Transfer points to image frame with 0,0 at center of the image
-            #finalpoints x,y is wrt top left corner of image, so this is actually:
-            # x = FinalPoints[i,0]-thisimg.shape[0]
-            # y = FinalPoints[i,1]-thisimg.shape[1]
-            x = FinalPoints[i,0]-thisimg.shape[1]/2
-            y = thisimg.shape[0]/2 - FinalPoints[i,1]
-            # Try replacing Z with odom altitude, for fun...
-            Z = -static_pos.position.z
-            #Z = -FinalPoints[i,2]/1000
-            # Populate Optical Flow Matrix for all points
-            A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
-            b[2*i:2*i+2] = FinalDelta[i]/rate
-            #print A
-            #print b
-        #print A.shape
-        #print b.shape
-        # Linear least squares solver on optical flow equation
-        Results, res, rank, s = np.linalg.lstsq(A,b)
-        #print Results
-        #print Results.shape
-        print("Opt Flow Velocity m/s:", Results[0:3])
-        print("Opt Flow Rotations:", Results[3:])
-        print("Odometry Velocity m/s:", static_vel.linear)
-        # Then Integrate to get odometry
+            ## Calculate Optical Flow 
+            #res = np.zeros((FinalPoints.shape[0],6))
+            A = np.zeros((2*FinalPoints.shape[0],6))
+            b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
+            #print thisimg.shape
+            for i in range(0,FinalPoints.shape[0]): 
+                # Transfer points to image frame with 0,0 at center of the image
+                #finalpoints x,y is wrt top left corner of image, so this is actually:
+                # x = FinalPoints[i,0]-thisimg.shape[0]
+                # y = FinalPoints[i,1]-thisimg.shape[1]
+                x = FinalPoints[i,0]-thisimg.shape[1]/2
+                y = thisimg.shape[0]/2 - FinalPoints[i,1]
+                # Try replacing Z with odom altitude, for fun...
+                Z = -static_pos.position.z
+                #Z = -FinalPoints[i,2]/1000
+                # Populate Optical Flow Matrix for all points
+                A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
+                b[2*i:2*i+2] = FinalDelta[i]/rate
+                #print A
+                #print b
+            #print A.shape
+            #print b.shape
+            # Linear least squares solver on optical flow equation
+            Results, res, rank, s = np.linalg.lstsq(A,b)
+            #print Results
+            #print Results.shape
+            print("Opt Flow Velocity m/s:", Results[0:3])
+            print("Opt Flow Rotations:", Results[3:])
+            print("Odometry Velocity m/s:", static_vel.linear)
+            # Then Integrate to get odometry
       
 
         

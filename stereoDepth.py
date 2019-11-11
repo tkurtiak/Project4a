@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 
-def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
+def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel,slide_dist):
 	# points, feature points on img left to find on right img
 	# 	Reccomend that we use as few points as possible to improve speed
 	# left image - greyscale
@@ -60,7 +60,8 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		# Limit disparity range to -40 to + 40 to reduce iterations
 		#lower = -point[1]+window
 		#upper = Rightwindowedimg.shape[1]-point[1]-window
-		lower = point[0]-20
+		lower = point[0]-slide_dist
+		#lower = point[0]-20
 		upper = point[0]+2
 		if upper > rightimg.shape[1]+window-1:
 			upper = rightimg.shape[1]+window-1
@@ -97,10 +98,20 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		
 		
 		d[i] = -d_range[np.argmin(error)]
+
+		smolerror=error[np.argmin(error)]
+		error[np.argmin(error)]=999999999999999999
+		d2= error[np.argmin(error)]#-d_range[np.argmin(error)]
+		# print 'smallet,2nd smallest'
+		# print smolerror
+		# print d2
 		# Reject edge disparitys as NaN
 		if d[i] <= 0:
 			d[i] = 'NaN'
 		if d[i] == d_range[0]:
+			d[i] = 'NaN'
+		#better be a unique thingy
+		if smolerror> .95*d2:
 			d[i] = 'NaN'
 		# incriment point counter
 		#print d[i]
