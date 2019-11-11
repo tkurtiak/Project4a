@@ -74,15 +74,25 @@ def sterioDepth(points,leftimg,rightimg,f,B,window,skipPixel):
 		#print upper
 		#print len(d_range)
 		# iterate through the diaparity values
+
+		Leftwindowedimg=Leftwindowedimg.astype('float32')
+		Rightwindowedimg=Rightwindowedimg.astype('float32')
+		#d_range=d_range.astype('float32')
 		for d_temp in d_range:
 			# Calculate sumsquared error between the feature point window and the particular disparity window
-			error[j] = np.sum(np.power(np.subtract(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]],Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)]),2))
+			error[j] = np.sum(np.square(np.subtract(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]],Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)])))
 			#error = Leftwindowedimg[]-Rightwindowedimg[]
+			temp=np.subtract(Leftwindowedimg[windowpoints[0,:],windowpoints[1,:]],Rightwindowedimg[windowpoints[0,:],np.add(windowpoints[1,:],d_temp)])
 			
+			# print('floating point error?')
+			# print temp
+			# print np.square(temp)
+
 			j = j+1
 		# the minimum error represents the disparity index which is a maximum
 		#match = np.argmin(error)
 		#print np.argmin(error)
+		# print('errors')
 		# print error
 		
 		
