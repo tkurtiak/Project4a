@@ -25,6 +25,9 @@ from geometry_msgs.msg import Point
 from std_msgs.msg import Empty
 import PlaneRANSAC as PR
 
+import faulthandler
+faulthandler.enable()
+
 
 bridge = CvBridge()
 # Initiate FAST object with default values
@@ -122,6 +125,11 @@ def OpticalFlow(data):
     global frame, matches, des, lastdes, features, lastfeatures, featurecount, lastfeaturecount, thisimg, lastimg
     global f, B, window, SkipPixel, Z, delta
     thisimg = SaveImg(data,"L")
+
+    global global_pos
+    global global_vel
+    static_pos=global_pos
+    static_vel=global_vel
     #thisimg = bridge.imgmsg_to_cv2(data,"passthrough")
 
     print frame
@@ -129,7 +137,7 @@ def OpticalFlow(data):
     # If not enough features are remaining in the image, generate new features
     if (frame == 0) or (featurecount < numFeatures/3) or (lastfeaturecount <numFeatures/3):
         features, des = featuredetector(thisimg)
-        print "SIFT: ",len(features)
+        #print "SIFT: ",len(features)
         points = 0
     # Otherwise use feature tracking
     else:
@@ -146,7 +154,7 @@ def OpticalFlow(data):
         #lastpoints = cv2.KeyPoint_convert(lastfeatures).astype(int)
         #features = KLT.calc_klt(lastimg, thisimg, lastpoints, win_size=(21, 21), max_iter=10, min_disp=0.01)
         
-        print "SIFT compare: ",len(features)
+        #print "SIFT compare: ",len(features)
         
         #global matchMask
         # Need to draw only good matches, so create a mask
@@ -196,17 +204,18 @@ def OpticalFlow(data):
 
         ## Show matches -- SOMETHING IS NOT WORKING HERE, but its only a visualization...
         #print points#delta[0]
-        draw_params = dict(matchColor = (0,255,0),
-                           singlePointColor = (255,0,0),
-        #                   matchesMask = matchMask,
-                           flags = cv2.DrawMatchesFlags_DEFAULT)
-        img3 = cv2.drawMatchesKnn(thisimg,plotfeatures,lastimg,plotlastfeatures,plotmatches,None,**draw_params)
-        #img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches,None,**draw_params)
-        #print matches[1]
-        #print len(lastfeatures)
-        #print len(features)
-        #plt.imshow(img3,),plt.show()
-        img_pub1.publish(bridge.cv2_to_imgmsg(img3,"bgr8"))
+
+        # draw_params = dict(matchColor = (0,255,0),
+        #                    singlePointColor = (255,0,0),
+        # #                   matchesMask = matchMask,
+        #                    flags = cv2.DrawMatchesFlags_DEFAULT)
+        # img3 = cv2.drawMatchesKnn(thisimg,plotfeatures,lastimg,plotlastfeatures,plotmatches,None,**draw_params)
+        # #img3 = cv2.drawMatchesKnn(lastimg,lastfeatures,thisimg,features,matches,None,**draw_params)
+        # #print matches[1]
+        # #print len(lastfeatures)
+        # #print len(features)
+        # #plt.imshow(img3,),plt.show()
+        # img_pub1.publish(bridge.cv2_to_imgmsg(img3,"bgr8"))
 
         ## Estimate Stereo depth
         Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel)
@@ -236,7 +245,7 @@ def OpticalFlow(data):
 
         # print("Mean - filter", np.mean(Z_filter))
         # print("Median - raw", np.mean(Z))
-        print("Odom Height, meters", global_pos.position.z)
+        print("Odom Height, meters", static_pos.position.z)
         
         ## Script breaks if there are too few points input into ransac.  
         # throw an error if there are too few points
@@ -253,7 +262,10 @@ def OpticalFlow(data):
         #print FinalPoints.shape
         #print FinalDelta.shape
         
-                # Plot optical Flow Vectors
+        # Plot optical Flow Vectors
+        #FinalDelta[:,:]=15
+
+
         plt.cla()
         plt.imshow(thisimg)
         plt.quiver(FinalPoints[:,0],FinalPoints[:,1],FinalDelta[:,0],FinalDelta[:,1])
@@ -263,20 +275,25 @@ def OpticalFlow(data):
         #plt.show()
 
         # Calculate 5 frame rolling avg Telemetry rate
-        rate = (time[4]-time[0])/5
+        #rate = (time[4]-time[0])/5
+        rate = (time[4]-time[0])/4 #if have 5 times, then have 4 deltaTs
         print("Telemetry Rate, seconds per frame",rate)
 
         ## Calculate Optical Flow 
         #res = np.zeros((FinalPoints.shape[0],6))
         A = np.zeros((2*FinalPoints.shape[0],6))
         b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
+        #print thisimg.shape
         for i in range(0,FinalPoints.shape[0]): 
             # Transfer points to image frame with 0,0 at center of the image
-            x = FinalPoints[i,0]-thisimg.shape[0]
-            y = FinalPoints[i,1]-thisimg.shape[1]
+            #finalpoints x,y is wrt top left corner of image, so this is actually:
+            # x = FinalPoints[i,0]-thisimg.shape[0]
+            # y = FinalPoints[i,1]-thisimg.shape[1]
+            x = FinalPoints[i,0]-thisimg.shape[1]/2
+            y = thisimg.shape[0]/2 - FinalPoints[i,1]
             # Try replacing Z with odom altitude, for fun...
-            #Z = -global_pos.position.z
-            Z = -FinalPoints[i,2]/1000
+            Z = -static_pos.position.z
+            #Z = -FinalPoints[i,2]/1000
             # Populate Optical Flow Matrix for all points
             A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
             b[2*i:2*i+2] = FinalDelta[i]/rate
@@ -289,7 +306,8 @@ def OpticalFlow(data):
         #print Results
         #print Results.shape
         print("Opt Flow Velocity m/s:", Results[0:3])
-        print("Odometry Velocity m/s:", global_vel.linear)
+        print("Opt Flow Rotations:", Results[3:])
+        print("Odometry Velocity m/s:", static_vel.linear)
         # Then Integrate to get odometry
       
 
