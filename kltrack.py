@@ -41,7 +41,8 @@ bridge = CvBridge()
 # Define/Initialize Global parameters
 frame = 0
 
-spacing = 30
+spacing = 20
+margin= 40
 time = np.zeros(5)
 
 # Camera focal length [pixel]
@@ -56,8 +57,8 @@ lk_params = dict( winSize  = (15,15),
 points_to_track = []
 
 
-for x in range(0,480,spacing):
-    for y in range(0,640,spacing):
+for x in range(0+margin,480-margin,spacing):
+    for y in range(0+margin,640-margin,spacing):
         new_point = [y, x]
         points_to_track.append(new_point)
 points_to_track = np.array(points_to_track,dtype=np.float32)
@@ -77,6 +78,28 @@ def plotter(image, points, flow):
         y = point[0,1]
         vx = flow[i][0,0]
         vy = flow[i][0,1]
+        cv2.line(color_img, (x,y), (x+vx, y+vy), color_red, linewidth) # draw a red line from the point with vector = [vx, vy]        
+    
+    plt.cla()
+    # plt.plot(color_img)
+    plt.imshow(color_img)
+    # plt.show()
+    plt.pause(0.05)
+    # cv2.imshow('tracked image',color_img)
+    # cv2.waitKey(1)
+
+def plotter2d(image, pointss, flows):
+
+    points=pointss.astype('int')
+    flow=flows.astype('int')
+    color_img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    color_red = [0,255,0] # bgr colorspace
+    linewidth = 3
+    for i in range(points.shape[0]):
+        x = points[i,0]
+        y = points[i,1]
+        vx = flow[i,0]
+        vy = flow[i,1]
         cv2.line(color_img, (x,y), (x+vx, y+vy), color_red, linewidth) # draw a red line from the point with vector = [vx, vy]        
     
     plt.cla()
@@ -176,10 +199,11 @@ def OpticalFlow(leftImg,rightImg):
         spatial_pnts = spatial_pnts[matchMaskbool[:,0]]
         d= d[matchMaskbool[:,0]]
 
-        Z = np.divide(f*B,d)
+        Zs = np.divide(f*B,d)
+
 
         print ('overall height in mm (estimate)')
-        print np.median(Z)
+        print np.median(Zs)
 
         # # print'temporal,spatial'
         # # print temporal_pnts.shape
@@ -199,12 +223,19 @@ def OpticalFlow(leftImg,rightImg):
 
 
 
-        FinalPoints= np.array([spatial_pnts[indicies[:,1],0],spatial_pnts[indicies[:,1],1],Z[indicies[:,1]]]).T
+        FinalPoints= np.array([spatial_pnts[indicies[:,1],0],spatial_pnts[indicies[:,1],1],Zs[indicies[:,1]]]).T
         FinalFlows= temporal_delta[indicies[:,0]]
 
 
         FinalPoints, ransMask, bestnormal, bestD = PR.PlaneRANSAC(FinalPoints)
         FinalDelta = FinalFlows[ransMask]
+
+
+        #debugging
+        # FinalDelta[:,:]=4
+        # FinalPoints[:,0]=320
+        # FinalPoints[:,1]=240
+        plotter2d(leftImg, FinalPoints, FinalDelta)
 
         print'ended up with:'
         print FinalPoints.shape
@@ -218,44 +249,48 @@ def OpticalFlow(leftImg,rightImg):
 
         ## Calculate Optical Flow 
         A = np.zeros((2*FinalPoints.shape[0],6))
-        b = np.zeros((2*FinalPoints.shape[0]))#FinalDelta.T*rate
+        b = np.zeros((2*FinalPoints.shape[0],1))#FinalDelta.T*rate
         #print thisimg.shape
+        Z = -np.median(Zs)
         for i in range(0,FinalPoints.shape[0]): 
             # Transfer points to image frame with 0,0 at center of the image
             #finalpoints x,y is wrt top left corner of image, so this is actually:
             x = FinalPoints[i,0]-leftImg.shape[1]/2
+            #x = leftImg.shape[1]/2-FinalPoints[i,0]
             y = leftImg.shape[0]/2 - FinalPoints[i,1]
+
             # Try replacing Z with odom altitude, for fun...
-            Z = -np.median(Z)
+            
             #Z = -FinalPoints[i,2]/1000
             # Populate Optical Flow Matrix for all points
             A[2*i:2*i+2] = np.array([[-1/Z,0,x/Z,x*y,-(1+x*x),y],[0,-1/Z,y/Z,(1+y*y), -x*y, -x]])
-            b[2*i:2*i+2] = FinalFlows[i,:]/rate
+            b[2*i:2*i+2,0] = FinalDelta[i,:]/rate
 
         # Linear least squares solver on optical flow equation
+
         Results, res, rank, s = np.linalg.lstsq(A,b)
         #print Results
         #print Results.shape
         print("Opt Flow Velocity m/s:", Results[0:3]*0.001)
-        # print("Opt Flow Rotations:", Results[3:])
-        print("Odometry Velocity m/s:", global_vel.linear)
+        print("Opt Flow Rotations:", Results[3:])
+        #print("Odometry Velocity m/s:", global_vel.linear)
 
         print '            '
         print '            '
 
-        odom = Odometry()
+        # odom = Odometry()
 
-        odom.twist.twist.linear.x = Results[0]*0.001*rate
-        odom.twist.twist.linear.y = Results[1]*0.001*rate
-        odom.twist.twist.linear.z = Results[2]*0.001*rate
-        odom.twist.twist.angular.x = 0
-        odom.twist.twist.angular.y = 0
-        odom.twist.twist.angular.z = 0
-        odom_pub.publish(odom)
+        # odom.twist.twist.linear.x = Results[0]*0.001*rate
+        # odom.twist.twist.linear.y = Results[1]*0.001*rate
+        # odom.twist.twist.linear.z = Results[2]*0.001*rate
+        # odom.twist.twist.angular.x = 0
+        # odom.twist.twist.angular.y = 0
+        # odom.twist.twist.angular.z = 0
+        # odom_pub.publish(odom)
 
-        tf.TransformBroadcaster()
+        # tf.TransformBroadcaster()
         
-        tbr.sendTransform((pos.x,pos.y,pos.z),(quat.x,quat.y,quat.z,quat.w),rospy.get_rostime(),'vehicle_frame', "odom")
+        #tbr.sendTransform((pos.x,pos.y,pos.z),(quat.x,quat.y,quat.z,quat.w),rospy.get_rostime(),'vehicle_frame', "odom")
 
         # matchMaskbool = matchMask.astype('bool')
         # points = points[matchMaskbool[:,0]]
