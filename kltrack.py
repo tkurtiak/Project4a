@@ -153,6 +153,8 @@ def OpticalFlow(leftImg,rightImg):
         lastImg=leftImg
     else:
         newpos_wide, status, error = cv2.calcOpticalFlowPyrLK(lastImg, leftImg, points_to_track, None, **lk_params)
+
+        print(newpos_wide-points_to_track)
         
         newpos=np.squeeze(newpos_wide) #(n,1,2) to (n,2)
         delta= newpos-np.squeeze(points_to_track)
@@ -179,13 +181,14 @@ def OpticalFlow(leftImg,rightImg):
 
         flow = rightpos_wide - points_to_track2
         flow = newpos_wide - points_to_track
-        # plotter(leftImg, points_to_track , flow)
+        plotter(leftImg, points_to_track , flow)
 
 
 
 
         #alrightyy moving on to actual mathybois
         matchMask = np.zeros((len(spatial_delta[:,0]),2))
+        points = matchMask
         d= np.zeros(len(spatial_delta[:,0]))
 
         for i in range(spatial_delta.shape[0]):
@@ -205,18 +208,6 @@ def OpticalFlow(leftImg,rightImg):
         print ('overall height in mm (estimate)')
         print np.median(Zs)
 
-        # # print'temporal,spatial'
-        # # print temporal_pnts.shape
-        # # print spatial_pnts.shape
-        # # print'dez'
-        # # print temporal_pnts
-        # # print spatial_pnts
-        # print ('overall height in m odom')
-        # print -global_pos.position.z
-
-        # print (" Difference is {}".format(np.median(Z)*0.001 - global_pos.position.z))
-
-
         indicies= np.array(np.all((temporal_pnts[:,None,:]==spatial_pnts[None,:,:]),axis=-1).nonzero()).T
         #...all((... x == y, gives [[a,b],[c,d]] where x[a]=y[b] x[c]=y[d] and so on
 
@@ -235,7 +226,7 @@ def OpticalFlow(leftImg,rightImg):
         # FinalDelta[:,:]=4
         # FinalPoints[:,0]=320
         # FinalPoints[:,1]=240
-        plotter2d(leftImg, FinalPoints, FinalDelta)
+        # plotter2d(leftImg, FinalPoints, FinalDelta)
 
         print'ended up with:'
         print FinalPoints.shape
@@ -278,19 +269,26 @@ def OpticalFlow(leftImg,rightImg):
         print '            '
         print '            '
 
-        # odom = Odometry()
+        odom_broadcast = tf.TransformBroadcaster()
 
-        # odom.twist.twist.linear.x = Results[0]*0.001*rate
-        # odom.twist.twist.linear.y = Results[1]*0.001*rate
-        # odom.twist.twist.linear.z = Results[2]*0.001*rate
-        # odom.twist.twist.angular.x = 0
-        # odom.twist.twist.angular.y = 0
-        # odom.twist.twist.angular.z = 0
-        # odom_pub.publish(odom)
-
-        # tf.TransformBroadcaster()
+        odom_quat = tf.transformations.quaternion_from_euler(0,0,0)
         
-        #tbr.sendTransform((pos.x,pos.y,pos.z),(quat.x,quat.y,quat.z,quat.w),rospy.get_rostime(),'vehicle_frame', "odom")
+        odom_broadcast.sendTransform((Results[0]*0.001*rate, Results[1]*0.001*rate, Results[2]*0.001*rate),(odom_quat),rospy.get_rostime(),'base_link', "odom")
+
+        odom = Odometry()
+
+        odom.twist.twist.linear.x = Results[0]*0.001*rate
+        odom.twist.twist.linear.y = Results[1]*0.001*rate
+        odom.twist.twist.linear.z = Results[2]*0.001*rate
+        odom.twist.twist.angular.x = 0
+        odom.twist.twist.angular.y = 0
+        odom.twist.twist.angular.z = 0
+        
+        odom.header.stamp = rospy.get_rostime()
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
+
+        odom_pub.publish(odom)
 
         # matchMaskbool = matchMask.astype('bool')
         # points = points[matchMaskbool[:,0]]
@@ -298,18 +296,13 @@ def OpticalFlow(leftImg,rightImg):
         # dist = dist[matchMaskbool[:,0]]
         # Z,d, points_spatial = stereo(features,des,featuresRight,desRight)
 
-        # #https://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
+        #https://stackoverflow.com/questions/20230384/find-indexes-of-matching-rows-in-two-2-d-arrays
         # indicies= np.array(np.all((points_temporal[:,None,:]==points_spatial[None,:,:]),axis=-1).nonzero()).T#.tolist()
         # #all x == y, gives [[a,b],[c,d]] where x[a]=y[b] x[c]=y[d] and so on
 
 
-
-
-
-        # print("Odom Height, meters", global_pos.position.z)
-        # print(newpos)
         # Z,d = SD.sterioDepth(points[range(0,points.shape[0])].astype(int),leftImg,rightImg,f,B,window,skipPixel,slide_dist)
-        #Z = np.divide(f*B,d)
+        # Z = np.divide(f*B,d)
         # ## Script breaks if there are too few points input into ransac.  
         # # throw an error if there are too few points
     
